@@ -1,4 +1,4 @@
-package main
+package client
 
 import (
 	"bufio"
@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"minirpc/codec"
+	"minirpc/config"
 	"net"
 	"net/http"
 	"strings"
@@ -19,7 +20,7 @@ import (
 // Call represents an active RPC.
 type Call struct {
 	Seq           uint64
-	ServiceMethod string      // format "<service>.<method>"
+	ServiceMethod string      // format "<server>.<method>"
 	Args          interface{} // arguments to the function
 	Reply         interface{} // reply from the function
 	Error         error       // if error occurs, it will be set
@@ -36,7 +37,7 @@ func (call *Call) done() {
 // multiple goroutines simultaneously.
 type Client struct {
 	cc       codec.Codec
-	opt      *Option
+	opt      *config.Option
 	sending  sync.Mutex // protect following
 	header   codec.Header
 	mu       sync.Mutex // protect following
@@ -130,7 +131,7 @@ func (client *Client) receive() {
 }
 
 // NewClient negotiate the codec method first
-func NewClient(conn net.Conn, opt *Option) (*Client, error) {
+func NewClient(conn net.Conn, opt *config.Option) (*Client, error) {
 	f := codec.NewCodecFuncMap[opt.CodecType]
 	if f == nil {
 		err := fmt.Errorf("invalid codec type %s", opt.CodecType)
@@ -146,7 +147,7 @@ func NewClient(conn net.Conn, opt *Option) (*Client, error) {
 	return newClientCodec(f(conn), opt), nil
 }
 
-func newClientCodec(cc codec.Codec, opt *Option) *Client {
+func newClientCodec(cc codec.Codec, opt *config.Option) *Client {
 	client := &Client{
 		seq:     1, // seq starts with 1, 0 means invalid call
 		cc:      cc,
@@ -157,18 +158,18 @@ func newClientCodec(cc codec.Codec, opt *Option) *Client {
 	return client
 }
 
-func parseOptions(opts ...*Option) (*Option, error) {
+func parseOptions(opts ...*config.Option) (*config.Option, error) {
 	// if opts is nil or pass nil as parameter
 	if len(opts) == 0 || opts[0] == nil {
-		return DefaultOption, nil
+		return config.DefaultOption, nil
 	}
 	if len(opts) != 1 {
 		return nil, errors.New("number of options is more than 1")
 	}
 	opt := opts[0]
-	opt.MagicNumber = DefaultOption.MagicNumber
+	opt.MagicNumber = config.DefaultOption.MagicNumber
 	if opt.CodecType == "" {
-		opt.CodecType = DefaultOption.CodecType
+		opt.CodecType = config.DefaultOption.CodecType
 	}
 	return opt, nil
 }
@@ -178,9 +179,9 @@ type clientResult struct {
 	err    error
 }
 
-type newClientFunc func(conn net.Conn, opt *Option) (client *Client, err error)
+type newClientFunc func(conn net.Conn, opt *config.Option) (client *Client, err error)
 
-func dialTimeout(f newClientFunc, network, address string, opts ...*Option) (client *Client, err error) {
+func dialTimeout(f newClientFunc, network, address string, opts ...*config.Option) (client *Client, err error) {
 	opt, err := parseOptions(opts...)
 	if err != nil {
 		return nil, err
@@ -213,7 +214,7 @@ func dialTimeout(f newClientFunc, network, address string, opts ...*Option) (cli
 }
 
 // Dial connects to an RPC server at the specified network address
-func Dial(network, address string, opts ...*Option) (*Client, error) {
+func Dial(network, address string, opts ...*config.Option) (*Client, error) {
 	return dialTimeout(NewClient, network, address, opts...)
 }
 
@@ -279,13 +280,13 @@ func (client *Client) Call(ctx context.Context, serviceMethod string, args, repl
 }
 
 // NewHTTPClient new a Client instance via HTTP as transport protocol
-func NewHTTPClient(conn net.Conn, opt *Option) (*Client, error) {
-	_, _ = io.WriteString(conn, fmt.Sprintf("CONNECT %s HTTP/1.0\n\n", defaultRPCPath))
+func NewHTTPClient(conn net.Conn, opt *config.Option) (*Client, error) {
+	_, _ = io.WriteString(conn, fmt.Sprintf("CONNECT %s HTTP/1.0\n\n", config.DefaultRPCPath))
 
 	// Require successful HTTP response
 	// before switching to RPC protocol.
 	resp, err := http.ReadResponse(bufio.NewReader(conn), &http.Request{Method: "CONNECT"})
-	if err == nil && resp.Status == connected {
+	if err == nil && resp.Status == config.Connected {
 		return NewClient(conn, opt)
 	}
 	if err == nil {
@@ -296,7 +297,7 @@ func NewHTTPClient(conn net.Conn, opt *Option) (*Client, error) {
 
 // DialHTTP connects to an HTTP RPC server at the specified network address
 // listening on the default HTTP RPC path.
-func DialHTTP(network, address string, opts ...*Option) (*Client, error) {
+func DialHTTP(network, address string, opts ...*config.Option) (*Client, error) {
 	return dialTimeout(NewHTTPClient, network, address, opts...)
 }
 
@@ -304,7 +305,7 @@ func DialHTTP(network, address string, opts ...*Option) (*Client, error) {
 // according the first parameter rpcAddr.
 // rpcAddr is a general format (protocol@addr) to represent a rpc server
 // eg, http@10.0.0.1:7001, tcp@10.0.0.1:9999, unix@/tmp/minirpc.sock
-func XDial(rpcAddr string, opts ...*Option) (*Client, error) {
+func XDial(rpcAddr string, opts ...*config.Option) (*Client, error) {
 	parts := strings.Split(rpcAddr, "@")
 	if len(parts) != 2 {
 		return nil, fmt.Errorf("rpc client err: wrong format '%s', expect protocol@addr", rpcAddr)

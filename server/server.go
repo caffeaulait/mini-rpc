@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"encoding/json"
@@ -7,18 +7,13 @@ import (
 	"io"
 	"log"
 	"minirpc/codec"
+	"minirpc/config"
 	"net"
 	"net/http"
 	"reflect"
 	"strings"
 	"sync"
 	"time"
-)
-
-const (
-	connected        = "200 Connected to RPC"
-	defaultRPCPath   = "/rpc"
-	defaultDebugPath = "/debug/rpc"
 )
 
 // Server represents an RPC Server.
@@ -43,7 +38,7 @@ func Register(rcvr interface{}) error {
 func (server *Server) Register(rcvr interface{}) error {
 	s := newService(rcvr)
 	if _, dup := server.serviceMap.LoadOrStore(s.name, s); dup {
-		return errors.New("rpc: service already defined: " + s.name)
+		return errors.New("rpc: server already defined: " + s.name)
 	}
 	return nil
 }
@@ -51,13 +46,13 @@ func (server *Server) Register(rcvr interface{}) error {
 func (server *Server) findService(serviceMethod string) (svc *service, mtype *methodType, err error) {
 	dot := strings.LastIndex(serviceMethod, ".")
 	if dot < 0 {
-		err = errors.New("rpc server: service/method request ill-formed: " + serviceMethod)
+		err = errors.New("rpc server: server/method request ill-formed: " + serviceMethod)
 		return
 	}
 	serviceName, methodName := serviceMethod[:dot], serviceMethod[dot+1:]
 	svci, ok := server.serviceMap.Load(serviceName)
 	if !ok {
-		err = errors.New("rpc server: can't find service " + serviceName)
+		err = errors.New("rpc server: can't find server " + serviceName)
 		return
 	}
 	svc = svci.(*service)
@@ -91,12 +86,12 @@ func (server *Server) ServeConn(conn io.ReadWriteCloser) {
 	defer func() {
 		_ = conn.Close()
 	}()
-	var opt Option
+	var opt config.Option
 	if err := json.NewDecoder(conn).Decode(&opt); err != nil {
 		log.Println("rpc server: options error: ", err)
 		return
 	}
-	if opt.MagicNumber != MagicNumber {
+	if opt.MagicNumber != config.MagicNumber {
 		log.Printf("rpc server: invalid magic number %x", opt.MagicNumber)
 		return
 	}
@@ -228,7 +223,7 @@ func (server *Server) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		log.Print("rpc hijacking ", req.RemoteAddr, ": ", err.Error())
 		return
 	}
-	_, _ = io.WriteString(conn, "HTTP/1.0 "+connected+"\n\n")
+	_, _ = io.WriteString(conn, "HTTP/1.0 "+config.Connected+"\n\n")
 	server.ServeConn(conn)
 }
 
@@ -236,9 +231,9 @@ func (server *Server) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 // It is still necessary to invoke http.Serve(), typically in a go statement.
 
 func (server *Server) HandleHTTP() {
-	http.Handle(defaultRPCPath, server)
-	http.Handle(defaultDebugPath, debugHTTP{server})
-	log.Println("rpc server debug path:", defaultDebugPath)
+	http.Handle(config.DefaultRPCPath, server)
+	http.Handle(config.DefaultDebugPath, debugHTTP{server})
+	log.Println("rpc server debug path:", config.DefaultDebugPath)
 }
 
 // HandleHTTP is a convenient approach for default server to register HTTP handlers

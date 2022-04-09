@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"fmt"
@@ -6,16 +6,16 @@ import (
 	"testing"
 )
 
-//type Foo int
-//
-//type Args struct{ Num1, Num2 int }
-//
-//func (f Foo) Sum(args Args, reply *int) error {
-//	*reply = args.Num1 + args.Num2
-//	return nil
-//}
+type Foo int
 
-// it's not a exported Method
+type Args struct{ Num1, Num2 int }
+
+func (f Foo) Sum(args Args, reply *int) error {
+	*reply = args.Num1 + args.Num2
+	return nil
+}
+
+// it's not an exported Method
 func (f Foo) sum(args Args, reply *int) error {
 	*reply = args.Num1 + args.Num2
 	return nil
@@ -30,7 +30,7 @@ func _assert(condition bool, msg string, v ...interface{}) {
 func TestNewService(t *testing.T) {
 	var foo Foo
 	s := newService(&foo)
-	_assert(len(s.method) == 1, "wrong service Method, expect 1, but got %d", len(s.method))
+	_assert(len(s.method) == 1, "wrong server Method, expect 1, but got %d", len(s.method))
 	mType := s.method["Sum"]
 	_assert(mType != nil, "wrong Method, Sum shouldn't nil")
 }

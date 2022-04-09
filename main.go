@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"log"
+	"minirpc/client"
+	"minirpc/server"
 	"net"
 	"net/http"
 	"sync"
@@ -21,15 +23,15 @@ func (f Foo) Sum(args Args, reply *int) error {
 func startServer(addr chan string) {
 	var foo Foo
 	l, _ := net.Listen("tcp", ":9999")
-	_ = Register(&foo)
-	HandleHTTP()
+	_ = server.Register(&foo)
+	server.HandleHTTP()
 	addr <- l.Addr().String()
 	_ = http.Serve(l, nil)
 }
 
 func call(addrCh chan string) {
-	client, _ := DialHTTP("tcp", <-addrCh)
-	defer func() { _ = client.Close() }()
+	c, _ := client.DialHTTP("tcp", <-addrCh)
+	defer func() { _ = c.Close() }()
 
 	time.Sleep(time.Second)
 	// send request & receive response
@@ -40,7 +42,7 @@ func call(addrCh chan string) {
 			defer wg.Done()
 			args := &Args{Num1: i, Num2: i * i}
 			var reply int
-			if err := client.Call(context.Background(), "Foo.Sum", args, &reply); err != nil {
+			if err := c.Call(context.Background(), "Foo.Sum", args, &reply); err != nil {
 				log.Fatal("call Foo.Sum error:", err)
 			}
 			log.Printf("%d + %d = %d", args.Num1, args.Num2, reply)
