@@ -21,7 +21,7 @@ type Type string
 
 const (
 	GobType  Type = "application/gob"
-	JSONType Type = "application/json" // not implemented
+	JSONType Type = "application/json"
 )
 
 var NewCodecFuncMap map[Type]NewCodecFunc
